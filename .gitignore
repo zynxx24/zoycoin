@@ -1,0 +1,92 @@
+# =====================================================================
+# Zoycoin — .gitignore
+# Diverifikasi terhadap isi workspace sebenarnya (bukan template).
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# 1. KUNCI RAHASIA — PALING PENTING
+# ---------------------------------------------------------------------
+# .local/keys/ menyimpan a.json & b.json dengan field `secret_hex`:
+# private key dalam bentuk plaintext. Kalau ini ter-commit, siapa pun
+# yang bisa membaca repo dapat mengambil seluruh dana di address
+# tersebut. Kebocoran private key TIDAK bisa dibatalkan — satu-satunya
+# mitigasi adalah memindahkan dana ke keypair baru.
+#
+# Seluruh direktori .local/ di-ignore, bukan per-file, supaya kunci
+# baru yang dibuat kemudian (key_c.json, wallet_d.json, ...) otomatis
+# ikut terlindungi tanpa perlu mengedit file ini.
+.local/
+
+# Jaring pengaman kalau ada yang menyalin kunci ke luar .local/.
+secret*.json
+wallet*.json
+a.json
+b.json
+addr_*.txt
+*.secret
+*.key
+*.pem
+*.p12
+*.keystore
+*.pfx
+id_rsa*
+id_ed25519*
+
+# ---------------------------------------------------------------------
+# 2. BUILD OUTPUT
+# ---------------------------------------------------------------------
+# Cargo.lock SENGAJA TIDAK di-ignore: ini binary crate, bukan library.
+# Lockfile di-commit supaya build reproducible dan supply chain bisa
+# diaudit. Jangan hapus baris komentar ini lalu menambahkan Cargo.lock.
+/target/
+**/*.rs.bk
+*.pdb
+*.profraw
+
+# ---------------------------------------------------------------------
+# 3. DATABASE RUNTIME
+# ---------------------------------------------------------------------
+# SQLite menulis -wal / -shm / -journal di samping file .db. Semuanya
+# state runtime. `zoycoin.db` adalah DB node default; sisanya artefak
+# uji (c2test, smoke, verify_fee, run-test).
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ---------------------------------------------------------------------
+# 4. ARTEFAK UJI MANUAL
+# ---------------------------------------------------------------------
+# Log & PID dari server yang dijalankan tangan selama audit.
+*.log
+*.pid
+
+# ---------------------------------------------------------------------
+# 5. STATE INTERNAL AGENT
+# ---------------------------------------------------------------------
+.agent_memory/
+.agent_state/
+*.tmp
+
+# ---------------------------------------------------------------------
+# 6. EDITOR / OS
+# ---------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------------
+# 7. ENV / KONFIGURASI LOKAL
+# ---------------------------------------------------------------------
+# API_TOKEN, TRUST_PROXY, BIND_ALL dibaca dari environment. Jangan
+# pernah commit nilai aslinya.
+.env
+.env.*
+!.env.example

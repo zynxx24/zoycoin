@@ -33,6 +33,21 @@ id_rsa*
 id_ed25519*
 
 # ---------------------------------------------------------------------
+# 1b. BACKUP DEV
+# ---------------------------------------------------------------------
+# backups/ berisi tarball snapshot dev: db.tar.gz, keys.tar.gz, logs.tar.gz.
+# keys.tar.gz memuat a.json/b.json LENGKAP dengan `secret_hex` (private key
+# plaintext) — jadi folder ini sederajat dengan .local/keys/ di atas dan
+# WAJIB tidak pernah masuk repo.
+#
+# Backup tetap disimpan di disk lokal untuk keperluan rollback. Kalau suatu
+# saat perlu diarsipkan ke tempat lain, enkripsi dulu (age/gpg) sebelum
+# dipindahkan. Jangan pernah `git add -f` folder ini.
+/backups/
+backups/
+*.tar.gz
+
+# ---------------------------------------------------------------------
 # 2. BUILD OUTPUT
 # ---------------------------------------------------------------------
 # Cargo.lock SENGAJA TIDAK di-ignore: ini binary crate, bukan library.

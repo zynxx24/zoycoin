@@ -23,6 +23,7 @@ use crate::crypto::{self, KeyPair};
 use crate::market;
 use crate::security::{self, SecurityConfig};
 use crate::transaction::{validate_transaction, OutPoint, Transaction};
+use crate::web3::{self, Web3Auth};
 
 pub type AppState = Arc<Mutex<Chain>>;
 
@@ -149,10 +150,145 @@ pub struct FeeQuery {
 }
 
 // ---------------------------------------------------------------------------
+// Web3 DTO
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct ChallengeReq {
+    pub address: String,
+}
+
+#[derive(Serialize)]
+pub struct ChallengeResp {
+    pub address: String,
+    pub nonce: String,
+    /// Pesan persis yang harus ditandatangani klien.
+    pub message: String,
+    pub expires_in: u64,
+}
+
+#[derive(Deserialize)]
+pub struct VerifyReq {
+    pub address: String,
+    pub signature: String,
+    pub public_key: String,
+}
+
+#[derive(Serialize)]
+pub struct VerifyResp {
+    pub address: String,
+    pub token: String,
+    pub expires_in: u64,
+}
+
+#[derive(Deserialize)]
+pub struct RevokeReq {
+    pub token: String,
+}
+
+// ---------------------------------------------------------------------------
+// Web3 handlers
+// ---------------------------------------------------------------------------
+
+fn web3_err(e: web3::Web3Error) -> ApiError {
+    use web3::Web3Error::*;
+    match e {
+        InvalidAddress => ApiError(StatusCode::BAD_REQUEST, e.to_string()),
+        NoChallenge | Expired | BadSignature => {
+            // Pesan seragam: jangan bocorkan apakah nonce ada / signature salah.
+            ApiError(StatusCode::UNAUTHORIZED, "autentikasi gagal".to_string())
+        }
+        Capacity => ApiError(StatusCode::TOO_MANY_REQUESTS, e.to_string()),
+    }
+}
+
+/// Terbitkan challenge nonce untuk address.
+async fn web3_challenge(
+    State(auth): State<Web3Auth>,
+    Json(req): Json<ChallengeReq>,
+) -> ApiResult<ChallengeResp> {
+    let (nonce, expires_in) = auth.issue_challenge(&req.address).map_err(web3_err)?;
+    let message = web3::canonical_message(&req.address, &nonce);
+    Ok(Json(ChallengeResp {
+        address: req.address,
+        nonce,
+        message,
+        expires_in,
+    }))
+}
+
+/// Verifikasi signature atas challenge, terbitkan sesi bearer.
+async fn web3_verify(
+    State(auth): State<Web3Auth>,
+    Json(req): Json<VerifyReq>,
+) -> ApiResult<VerifyResp> {
+    let (token, expires_in) = auth
+        .verify_and_issue(&req.address, &req.signature, &req.public_key)
+        .map_err(web3_err)?;
+    Ok(Json(VerifyResp {
+        address: req.address,
+        token,
+        expires_in,
+    }))
+}
+
+/// Cek status sesi berdasarkan header `Authorization: Bearer <token>`.
+async fn web3_session(
+    State(auth): State<Web3Auth>,
+    headers: axum::http::HeaderMap,
+) -> ApiResult<Value> {
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim)
+        .unwrap_or_default();
+
+    match auth.session_address(token) {
+        Some(addr) => Ok(Json(json!({ "authenticated": true, "address": addr }))),
+        None => Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "sesi tidak valid atau kedaluwarsa".to_string(),
+        )),
+    }
+}
+
+/// Cabut sesi (logout).
+async fn web3_revoke(
+    State(auth): State<Web3Auth>,
+    Json(req): Json<RevokeReq>,
+) -> ApiResult<Value> {
+    let revoked = auth.revoke(&req.token);
+    Ok(Json(json!({ "revoked": revoked })))
+}
+
+/// Observability: jumlah nonce & sesi aktif.
+async fn web3_stats(State(auth): State<Web3Auth>) -> ApiResult<Value> {
+    let (nonces, sessions) = auth.stats();
+    Ok(Json(json!({
+        "pending_nonces": nonces,
+        "active_sessions": sessions,
+        "nonce_ttl_secs": web3::NONCE_TTL.as_secs(),
+        "session_ttl_secs": web3::SESSION_TTL.as_secs(),
+    })))
+}
+
+/// Sub-router Web3 dengan state sendiri (Web3Auth), digabung ke router utama.
+pub fn web3_router(auth: Web3Auth) -> Router {
+    Router::new()
+        .route("/web3/challenge", post(web3_challenge))
+        .route("/web3/verify", post(web3_verify))
+        .route("/web3/session", get(web3_session))
+        .route("/web3/revoke", post(web3_revoke))
+        .route("/web3/stats", get(web3_stats))
+        .with_state(auth)
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
-pub fn router(state: AppState, sec: SecurityConfig) -> Router {
+pub fn router(state: AppState, sec: SecurityConfig, web3_auth: Web3Auth) -> Router {
     Router::new()
         // --- meta & statistik ---
         .route("/health", get(health))
@@ -191,6 +327,11 @@ pub fn router(state: AppState, sec: SecurityConfig) -> Router {
         // Rate limit + auth token + security header.
         .layer(middleware::from_fn_with_state(sec, security::guard))
         .with_state(state)
+        // Web3 auth router punya state sendiri (Web3Auth) dan sudah
+        // `with_state`-ed menjadi Router<()>, jadi digabung SETELAH
+        // router utama di-`with_state`. Merge sebelum with_state akan
+        // gagal: Router<()> tidak bisa jadi Router<AppState>.
+        .merge(web3_router(web3_auth))
 }
 
 // ---------------------------------------------------------------------------
@@ -474,7 +615,7 @@ async fn decode_tx(
 
     // Double-spend terhadap mempool ikut dihitung, bukan hanya UTXO set.
     let mut spent: HashSet<OutPoint> = HashSet::new();
-    for pending in &chain.mempool {
+    for pending in chain.mempool.iter() {
         for input in &pending.inputs {
             spent.insert(OutPoint::new(&input.prev_txid, input.prev_vout));
         }
@@ -628,12 +769,21 @@ async fn mempool(State(state): State<AppState>) -> ApiResult<Value> {
 
 async fn mempool_tx(State(state): State<AppState>, Path(txid): Path<String>) -> ApiResult<Value> {
     let chain = state.lock().await;
-    match chain.mempool.iter().find(|t| t.txid() == txid) {
-        Some(tx) => Ok(Json(json!({
+    // Clone tx + hitung fee di dalam scope guard, supaya `chain` tidak perlu
+    // hidup selama serialisasi JSON.
+    let found = chain.mempool.iter().find(|t| t.txid() == txid).map(|tx| {
+        let fee = market::fee(&chain.utxos, tx);
+        let fee_rate = market::fee_rate(&chain.utxos, tx);
+        (tx.clone(), fee, fee_rate)
+    });
+    drop(chain);
+
+    match found {
+        Some((tx, fee, fee_rate)) => Ok(Json(json!({
             "status": "mempool",
             "txid": txid,
-            "fee": market::fee(&chain.utxos, tx),
-            "fee_rate": market::fee_rate(&chain.utxos, tx),
+            "fee": fee,
+            "fee_rate": fee_rate,
             "tx": tx,
         }))),
         None => Err(ApiError::not_found(format!(

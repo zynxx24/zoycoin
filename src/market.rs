@@ -56,7 +56,7 @@ impl Chain {
     pub fn mempool_stats(&self) -> Value {
         let mut total_fee: u64 = 0;
         let mut best_rate: u64 = 0;
-        for tx in &self.mempool {
+        for tx in self.mempool.iter() {
             total_fee = total_fee.saturating_add(fee(&self.utxos, tx));
             best_rate = best_rate.max(fee_rate(&self.utxos, tx));
         }
@@ -89,7 +89,7 @@ impl Chain {
     /// Histogram fee-rate untuk grafik mempool (bucket pangkat dua).
     pub fn fee_histogram(&self) -> Value {
         let mut buckets: HashMap<u32, usize> = HashMap::new();
-        for tx in &self.mempool {
+        for tx in self.mempool.iter() {
             let rate = fee_rate(&self.utxos, tx);
             let bucket = if rate == 0 { 0 } else { 64 - rate.leading_zeros() };
             *buckets.entry(bucket).or_insert(0) += 1;

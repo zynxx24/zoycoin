@@ -24,10 +24,12 @@ mod block;
 mod chain;
 mod crypto;
 mod market;
+mod mempool;
 mod security;
 mod stats;
 mod store;
 mod transaction;
+mod web3;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -160,7 +162,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let app = api::router(Arc::clone(&chain), sec);
+    // Web3 auth: nonce sekali-pakai + sesi bearer ber-TTL.
+    let web3_auth = web3::Web3Auth::new();
+    info!(
+        nonce_ttl_secs = web3::NONCE_TTL.as_secs(),
+        session_ttl_secs = web3::SESSION_TTL.as_secs(),
+        "web3 auth aktif (signature login)"
+    );
+
+    let app = api::router(Arc::clone(&chain), sec, web3_auth);
 
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;

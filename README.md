@@ -255,3 +255,10 @@ dengan `git filter-repo` bila repo sudah publik.
 ## 11. Lisensi
 
 Belum ditetapkan. Tambahkan `LICENSE` sebelum publikasi terbuka.
+
+---
+
+## 12. Changelog & Report Pekerjaan
+
+Lihat **[CHANGELOG.md](CHANGELOG.md)** untuk catatan perubahan per tanggal
+beserta report pekerjaan lengkap (test, security, backup, pembersihan).

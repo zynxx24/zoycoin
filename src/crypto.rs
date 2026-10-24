@@ -162,6 +162,25 @@ pub fn address_from_pubkey_bytes(pubkey: &[u8]) -> String {
     base58_encode(&payload)
 }
 
+/// Turunkan address dari public key hex (33/65 byte SEC1).
+/// Mengembalikan string kosong bila public key tidak valid — pemanggil
+/// harus membandingkan dengan address yang diklaim (fail-closed).
+pub fn address_from_public_key(public_key_hex: &str) -> String {
+    let pk_bytes = match hex::decode(public_key_hex.trim()) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    // Hanya terima titik SEC1 terkompresi (33) atau tidak terkompresi (65).
+    if pk_bytes.len() != 33 && pk_bytes.len() != 65 {
+        return String::new();
+    }
+    // Validasi bahwa titik benar-benar ada di kurva secp256k1.
+    if VerifyingKey::from_sec1_bytes(&pk_bytes).is_err() {
+        return String::new();
+    }
+    address_from_pubkey_bytes(&pk_bytes)
+}
+
 /// Verifikasi signature ECDSA terhadap message.
 pub fn verify_signature(public_key_hex: &str, message: &[u8], signature_hex: &str) -> bool {
     let pk_bytes = match hex::decode(public_key_hex) {

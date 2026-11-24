@@ -1,4 +1,6 @@
-# Zoycoin — Backend Transaksi ala Bitcoin (Rust)
+# Zoycoin
+
+Backend transaksi ala Bitcoin, ditulis dalam Rust.
 
 Model **UTXO** + signature **secp256k1 ECDSA** + **proof-of-work** SHA-256d,
 dengan fee market berbasis fee-rate, blok berbatas, dan persistensi SQLite.
@@ -10,7 +12,7 @@ dengan fee market berbasis fee-rate, blok berbatas, dan persistensi SQLite.
 | Kebutuhan | Versi |
 |---|---|
 | Rust toolchain | stable (edition 2021) |
-| C compiler | `cc`/`gcc` — dibutuhkan `libsqlite3-sys` |
+| C compiler | `cc`/`gcc`, dibutuhkan `libsqlite3-sys` |
 | SQLite | dibundel (`bundled` feature), tidak perlu install manual |
 
 ```bash
@@ -69,7 +71,7 @@ dengan pesan jelas. Ini disengaja; jangan diakali dengan mengosongkan token.
 
 ---
 
-## 4. Autentikasi — kapan token diwajibkan
+## 4. Autentikasi: kapan token diwajibkan
 
 Aturannya ada di `src/security.rs` (`needs_auth` + `is_admin_path`).
 
@@ -139,8 +141,8 @@ curl -s -H "Authorization: Bearer $API_TOKEN" http://127.0.0.1:8080/stats
 
 ## 6. Batas & policy node
 
-Nilai di `src/security.rs` adalah **policy node**, bukan aturan konsensus —
-node lain boleh memakai angka berbeda tanpa memecah chain.
+Nilai di `src/security.rs` adalah **policy node**, bukan aturan konsensus.
+Node lain boleh memakai angka berbeda tanpa memecah chain.
 
 | Konstanta | Nilai | Fungsi |
 |---|---|---|
@@ -187,7 +189,7 @@ src/
 
 ---
 
-## 9. Keamanan — baca sebelum publish
+## 9. Keamanan: baca sebelum publish
 
 1. **Jangan pernah commit private key.** File wallet berisi `secret_hex`
    plaintext. Seluruh `.local/` sudah masuk `.gitignore`; simpan kunci di
@@ -195,7 +197,7 @@ src/
 2. **`BIND_ALL=1` wajib `API_TOKEN`.** Proses menolak start tanpa itu.
 3. **`TRUST_PROXY` hanya untuk reverse proxy tepercaya.** Tanpa proxy,
    header `X-Forwarded-For` bisa dipalsukan untuk menembus rate limit.
-4. **`Cargo.lock` sengaja di-commit** — binary crate, build reproducible.
+4. **`Cargo.lock` sengaja di-commit**: binary crate, build reproducible.
 5. **Kebocoran kunci tidak bisa dibatalkan.** Kalau `secret_hex` pernah
    terkirim ke luar mesin ini, pindahkan dananya ke keypair baru.
 
